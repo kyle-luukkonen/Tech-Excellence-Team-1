@@ -1,0 +1,93 @@
+---
+Description: Launches an Apache Web Server (EC2) and a Jenkins Web Server (EC2) in Team-1's VPC on a public subnet.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID
+    Default: 
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID where EC2 instance(s) will be launched
+    Default: 
+  JenkinsKeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: 
+  ApacheKeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: 
+  JenkinsImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-
+  ApacheImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-
+  JenkinsInstanceType: 
+    Type: String
+    Default: t2.micro
+  ApacheInstanceType: 
+    Type: String
+    Default: t2.micro
+  JenkinsSecurityGroupID:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-
+  ApacheSecurityGroupID:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-
+
+Resources:
+  JenkinsWebServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref JenkinsImageId
+      InstanceType: !Sub '${JenkinsInstanceType}'
+      KeyName: !Sub '${JenkinsKeyPairName}'
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeleteOnTermination: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref JenkinsSecurityGroupID # JenkinsServer-SG
+          SubnetId: !Ref SubnetId
+
+  ApacheWebServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref AWSNukeInstanceProfile
+      ImageId: !Ref ApacheImageId
+      InstanceType: !Sub '${ApacheInstanceType}'
+      KeyName: !Sub '${ApacheKeyPairName}'
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeleteOnTermination: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref ApacheSecurityGroupID # PublicAccessGroup
+          SubnetId: !Ref SubnetId
+
+  # Creates role for AWS-Nuke EC2 instance that grants it the minimal permissions needed - policy to upload log to S3 bucket and policy to allow AssumeRole of cross-account role.
+  ApacheEC2Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+          - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+          - 'arn:aws:iam::aws:policy/AWSCodeCommitPowerUser'
+      RoleName: !Join [ '-', ['ApacheEC2Role', !Ref AWS::Region,] ] # This naming convention was designed to avoid causing an unrecoverable error if same template is reused in multiple Regions, per AWS CF documentation for an AWS::IAM::Role.
+
+  # Creates instance profile that will be attached to Apache instance
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ApacheEC2Role
